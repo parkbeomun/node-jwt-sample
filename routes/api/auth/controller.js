@@ -1,3 +1,6 @@
+const User = require('../../../models/user')
+const jwt = require('jsonwebtoken')
+
 /*
 
     POST /api/auth/register
@@ -39,10 +42,18 @@ exports.register = (req,res) => {
 
     //repond the the client
     const respond = (isAdmin) => {
-        res.status(409).json({
-            message: error.message
+        res.json({
+            message: 'registered successfully',
+            admin: isAdmin ? true : false
         })
-    }}
+    }
+
+    //run when there is error (username exists_
+    const onError = (error) => {
+        res.status(409).json({
+            message: 'onError ' + error.message + ":" + username
+        })
+    }
 
     // check username duplication
     User.findOneByUsername(username)
@@ -52,4 +63,119 @@ exports.register = (req,res) => {
         .then(respond)
         .catch(onError)
 
+}
 
+
+/*
+    POST /api/auth/login
+    {
+        username,
+        password
+    }
+*/
+
+exports.login = (req, res) => {
+    //res.send('login api is working')
+    const {username, password} = req.body
+    const secret = req.app.get('jwt-secret')
+
+    //check the user info & generate the jwt
+    const check = (user) => {
+        if(!user) {
+            //user does not exists
+            throw new Error('login failed')
+        } else {
+            //user exists, check the password
+            if(user.verify(password)) {
+                //create a promise that generates jwt asynchrously
+                const p = new Promise((resolve, reject) => {
+                    jwt.sign(
+                        {
+                            _id: user._id,
+                            username: user.username,
+                            admin: user.admin
+                        },
+                        secret,
+                        {
+                            expiresIn: '7d',
+                            issuer: '',
+                            subject: 'userinfo'
+                        }, (err, token) => {
+                            if(err) reject(err)
+                            resolve(token)
+                        })
+                })
+                return p
+            } else {
+                throw new Error('login failed')
+            }
+        }
+    }
+
+    //respond the token
+    const respond = (token) => {
+        res.json({
+            message: 'logged in successfully',
+            token
+        })
+    }
+
+    //error occured
+    const onError = (error) => {
+        res.status(403).json({
+            message: error.message
+        })
+    }
+
+    //find the user
+    User.findOneByUsername(username)
+        .then(check)
+        .then(respond)
+        .catch(onError)
+}
+
+/*
+    GET /api/auth/check
+*/
+
+exports.check = (req,res) => {
+    //read the token from header or url
+    const token = req.headers['x-access-token'] || req.query.token
+    const secret = req.app.get('jwt-secret');
+    //token does not exist
+    if(!token) {
+        return res.status(403).json({
+            success: false,
+            message: 'not logged in'
+        })
+    }
+
+    //create a promise that decodes the token
+    const p = new Promise(
+        (resolve, reject) => {
+            jwt.verify(token, req.app.get('jwt-secret'), (err, decoded) => {
+                if(err) reject (err)
+                    resolve(decoded)
+            })
+        }
+    )
+
+    // if token is valid, it will respond with its info
+    const respond = (token) => {
+        res.json({
+            success: true,
+            info: token
+        })
+    }
+
+    // if it has falid to verify, it will return an error message
+    const onError = (error) => {
+        res.status(403).json({
+            success: false,
+            message: error.message+secret
+        })
+    }
+
+    //process the promise
+    p.then(respond).catch(onError)
+}

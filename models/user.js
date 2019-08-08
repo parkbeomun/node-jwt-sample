@@ -35,6 +35,10 @@ User.methods.assignAdmin = function() {
     return this.save();
 }
 
+User.methods.cancelAdmin = function() {
+    this.admin = false
+    return this.save();
+}
 
 module.exports = mongoose.model('User', User)
 
